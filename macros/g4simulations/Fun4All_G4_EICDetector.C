@@ -1,10 +1,46 @@
+#pragma once
+
+#include "GlobalVariables.C"
+
+#include "DisplayOn.C"
+#include "G4Setup_EICDetector.C"
+#include "G4_Bbc.C"
+#include "G4_CaloTrigger.C"
+#include "G4_DSTReader_EICDetector.C"
+#include "G4_FwdJets.C"
+#include "G4_Global.C"
+#include "G4_HIJetReco.C"
+#include "G4_Input.C"
+#include "G4_Jets.C"
+
+#include <fun4all/Fun4AllDstOutputManager.h>
+#include <fun4all/Fun4AllOutputManager.h>
+#include <fun4all/Fun4AllServer.h>
+
+#include <phool/recoConsts.h>
+
+R__LOAD_LIBRARY(libfun4all.so)
 
 int Fun4All_G4_EICDetector(
-                           const int nEvents = 2,
-                           const char * inputFile = "/gpfs02/phenix/prod/sPHENIX/preCDR/pro.1-beta.5/single_particle/spacal1d/fieldmap/G4Hits_sPHENIX_e-_eta0_16GeV.root",
-                           const char * outputFile = "G4EICDetector.root"
-                           )
+    const int nEvents = 1,
+    const char *inputFile = "/sphenix/data/data02/review_2017-08-02/single_particle/spacal2d/fieldmap/G4Hits_sPHENIX_e-_eta0_8GeV-0002.root",
+    const string &outputFile = "G4EICDetector.root")
 {
+  //---------------
+  // Fun4All server
+  //---------------
+  Fun4AllServer *se = Fun4AllServer::instance();
+  // se->Verbosity(01); // uncomment for batch production running with minimal output messages
+  // se->Verbosity(Fun4AllServer::VERBOSITY_SOME); // uncomment for some info for interactive running
+
+  // just if we set some flags somewhere in this macro
+  recoConsts *rc = recoConsts::instance();
+  // By default every random number generator uses
+  // PHRandomSeed() which reads /dev/urandom to get its seed
+  // if the RANDOMSEED flag is set its value is taken as initial seed
+  // which will produce identical results so you can debug your code
+  // rc->set_IntFlag("RANDOMSEED", 12345);
+
   //===============
   // Input options
   //===============
@@ -13,435 +49,379 @@ int Fun4All_G4_EICDetector(
   // read previously generated g4-hits files, in this case it opens a DST and skips
   // the simulations step completely. The G4Setup macro is only loaded to get information
   // about the number of layers used for the cell reco code
-  const bool readhits = false;
+  //
+  //Input::READHITS = true;
+  INPUTREADHITS::filename = inputFile;
+
   // Or:
-  // read files in HepMC format (typically output from event generators like hijing or pythia)
-  const bool readhepmc = false; // read HepMC files
-  // Or:
-  // Use particle generator
-  const bool runpythia8 = false;
-  const bool runpythia6 = false;
+  // Use one or more particle generators
+  // It is run if Input::<generator> is set to true
+  // all other options only play a role if it is active
+
+  // Use Pythia 8
+  //  Input::PYTHIA8 = true;
+
+  // Use Pythia 6
+  //   Input::PYTHIA6 = true;
+  //   PYTHIA6::config_file = "phpythia6_ep.cfg";
+
+  // Use Sartre
+  //   Input::SARTRE = true;
+
+  // Simple multi particle generator in eta/phi/pt ranges
+  Input::SIMPLE = true;
+  Input::SIMPLE_VERBOSITY = 0;
+  INPUTSIMPLE::AddParticle("pi-", 5);
+  INPUTSIMPLE::set_eta_range(-3, 3);
+  INPUTSIMPLE::set_phi_range(-M_PI, M_PI);
+  INPUTSIMPLE::set_pt_range(0.1, 20.);
+  // or if you want to set the momentum, not pt range
+  //  INPUTSIMPLE::set_p_range(0.1, 20.);
+  INPUTSIMPLE::set_vtx_mean(0., 0., 0.);
+  INPUTSIMPLE::set_vtx_width(0., 0., 5.);
+
+  // Particle gun (same particles in always the same direction)
+  //  Input::GUN = true;
+  Input::GUN_VERBOSITY = 0;
+  INPUTGUN::AddParticle("anti_proton", 10, 0, 0.01);
+  INPUTGUN::AddParticle("geantino", 1.7776, -0.4335, 0.);
+  //INPUTGUN::set_vtx(0,0,0);
+
+  // Upsilon generator
+  //Input::UPSILON = true;
+  Input::UPSILON_VERBOSITY = 0;
+  INPUTUPSILON::AddDecayParticles("e+", "e-", 0);
+
+  // And/Or read generated particles from file
+
+  // eic-smear output
+  //  Input::READEIC = true;
+  INPUTREADEIC::filename = inputFile;
+
+  // HepMC2 files
+  //  Input::HEPMC = true;
+  Input::VERBOSITY = 0;
+  INPUTHEPMC::filename = inputFile;
+
+  //-----------------
+  // Initialize the selected Input/Event generation
+  //-----------------
+  InputInit();
+
+  //======================
+  // Write the DST
+  //======================
+
+//  Enable::DSTOUT = true;
+  Enable::DSTOUT_COMPRESS = false;  // Compress DST files
+  //Option to convert DST to human command readable TTree for quick poke around the outputs
+  //Enable::DSTREADER = true;
 
   //======================
   // What to run
   //======================
+  // Global options (enabled for all subsystems - if implemented)
+  //  Enable::ABSORBER = true;
+  //  Enable::OVERLAPCHECK = true;
+  //  Enable::VERBOSITY = 1;
 
-  bool do_bbc = true;
+  Enable::BBC = true;
 
-  bool do_pipe = true;
+  // whether to simulate the Be section of the beam pipe
+  Enable::PIPE = true;
+  // EIC beam pipe extension beyond the Be-section:
+  //G4PIPE::use_forward_pipes = true;
 
-  bool do_svtx = true;
-  bool do_svtx_cell = false;
-  bool do_svtx_track = false;
-  bool do_svtx_eval = false;
+  Enable::EGEM = true;
+  Enable::FGEM = true;
+  // barrel tracker
+  Enable::BARREL = false;
+  Enable::FST = false;
+  // mvtx/tpc tracker
+  Enable::MVTX = true;
+  Enable::TPC = true;
 
-  bool do_preshower = false;
+  Enable::TRACKING = true;
+  Enable::TRACKING_EVAL = Enable::TRACKING && true;
+  G4TRACKING::DISPLACED_VERTEX = false;  // this option exclude vertex in the track fitting and use RAVE to reconstruct primary and 2ndary vertexes
+                                         // projections to calorimeters
+  G4TRACKING::PROJECTION_CEMC = false;
+  G4TRACKING::PROJECTION_FEMC = false;
+  G4TRACKING::PROJECTION_FHCAL = false;
 
-  bool do_cemc = true;
-  bool do_cemc_cell = true;
-  bool do_cemc_twr = true;
-  bool do_cemc_cluster = true;
-  bool do_cemc_eval = false;
+  Enable::CEMC = true;
+  //  Enable::CEMC_ABSORBER = true;
+  Enable::CEMC_CELL = Enable::CEMC && true;
+  Enable::CEMC_TOWER = Enable::CEMC_CELL && true;
+  Enable::CEMC_CLUSTER = Enable::CEMC_TOWER && true;
+  Enable::CEMC_EVAL = Enable::CEMC_CLUSTER && true;
 
-  bool do_hcalin = true;
-  bool do_hcalin_cell = true;
-  bool do_hcalin_twr = true;
-  bool do_hcalin_cluster = true;
-  bool do_hcalin_eval = false;
+  Enable::HCALIN = true;
+  //  Enable::HCALIN_ABSORBER = true;
+  Enable::HCALIN_CELL = Enable::HCALIN && true;
+  Enable::HCALIN_TOWER = Enable::HCALIN_CELL && true;
+  Enable::HCALIN_CLUSTER = Enable::HCALIN_TOWER && true;
+  Enable::HCALIN_EVAL = Enable::HCALIN_CLUSTER && true;
 
-  bool do_magnet = true;
+  Enable::MAGNET = true;
 
-  bool do_hcalout = true;
-  bool do_hcalout_cell = true;
-  bool do_hcalout_twr = true;
-  bool do_hcalout_cluster = true;
-  bool do_hcalout_eval = false;
-
-  bool do_global = true;
-  bool do_global_fastsim = false;
-
-  bool do_jet_reco = false;
-  bool do_jet_eval = false;
-
-  bool do_fwd_jet_reco = true;
-  bool do_fwd_jet_eval = true;
+  Enable::HCALOUT = true;
+  //  Enable::HCALOUT_ABSORBER = true;
+  Enable::HCALOUT_CELL = Enable::HCALOUT && true;
+  Enable::HCALOUT_TOWER = Enable::HCALOUT_CELL && true;
+  Enable::HCALOUT_CLUSTER = Enable::HCALOUT_TOWER && true;
+  Enable::HCALOUT_EVAL = Enable::HCALOUT_CLUSTER && true;
 
   // EICDetector geometry - barrel
-
-  bool do_DIRC = true;
-
-  // EICDetector geometry - 'hadron' direction
-
-  bool do_FGEM = true;
-
-  bool do_RICH = true;
-  bool do_Aerogel = true;
-
-  bool do_FEMC = true;
-  bool do_FEMC_cell = true;
-  bool do_FEMC_twr = true;
-  bool do_FEMC_cluster = true;
-
-  bool do_FHCAL = true;
-  bool do_FHCAL_cell = true;
-  bool do_FHCAL_twr = true;
-  bool do_FHCAL_cluster = true;
-
+  Enable::DIRC = true;
 
   // EICDetector geometry - 'hadron' direction
+  Enable::RICH = true;
+  Enable::AEROGEL = true;
 
-  bool do_EGEM = true;
+  Enable::FEMC = true;
+  //  Enable::FEMC_ABSORBER = true;
+  Enable::FEMC_CELL = Enable::FEMC && true;
+  Enable::FEMC_TOWER = Enable::FEMC_CELL && true;
+  Enable::FEMC_CLUSTER = Enable::FEMC_TOWER && true;
+  Enable::FEMC_EVAL = Enable::FEMC_CLUSTER && true;
 
-  bool do_EEMC = true;
-  bool do_EEMC_cell = true;
-  bool do_EEMC_twr = true;
-  bool do_EEMC_cluster = true;
+  Enable::FHCAL = true;
+  //  Enable::FHCAL_ABSORBER = true;
+  Enable::FHCAL_CELL = Enable::FHCAL && true;
+  Enable::FHCAL_TOWER = Enable::FHCAL_CELL && true;
+  Enable::FHCAL_CLUSTER = Enable::FHCAL_TOWER && true;
+  Enable::FHCAL_EVAL = Enable::FHCAL_CLUSTER && true;
+
+  // EICDetector geometry - 'electron' direction
+  Enable::EEMC = true;
+  Enable::EEMC_CELL = Enable::EEMC && true;
+  Enable::EEMC_TOWER = Enable::EEMC_CELL && true;
+  Enable::EEMC_CLUSTER = Enable::EEMC_TOWER && true;
+  Enable::EEMC_EVAL = Enable::EEMC_CLUSTER && true;
+
+  Enable::PLUGDOOR = true;
 
   // Other options
+  Enable::GLOBAL_RECO = true;
+  Enable::GLOBAL_FASTSIM = true;
 
-  bool do_dst_compress = false;
+  Enable::CALOTRIGGER = true && Enable::CEMC_TOWER && Enable::HCALIN_TOWER && Enable::HCALOUT_TOWER;
 
-  //Option to convert DST to human command readable TTree for quick poke around the outputs
-  bool do_DSTReader = true;
-  //---------------
-  // Load libraries
-  //---------------
+  // Select only one jet reconstruction- they currently use the same
+  // output collections on the node tree!
+  Enable::JETS = true;
+  Enable::JETS_EVAL = Enable::JETS && true;
 
-  gSystem->Load("libfun4all.so");
-  gSystem->Load("libg4detectors.so");
-  gSystem->Load("libphhepmc.so");
-  gSystem->Load("libg4testbench.so");
-  gSystem->Load("libg4hough.so");
-  gSystem->Load("libcemc.so");
-  gSystem->Load("libg4eval.so");
+  Enable::FWDJETS = true;
+  Enable::FWDJETS_EVAL = Enable::FWDJETS && true;
+
+  // HI Jet Reco for jet simulations in Au+Au (default is false for
+  // single particle / p+p simulations, or for Au+Au simulations which
+  // don't care about jets)
+  Enable::HIJETS = false && Enable::JETS && Enable::CEMC_TOWER && Enable::HCALIN_TOWER && Enable::HCALOUT_TOWER;
+
+  // new settings using Enable namespace in GlobalVariables.C
+  Enable::BLACKHOLE = true;
+  BlackHoleGeometry::visible = false;
 
   // establish the geometry and reconstruction setup
-  gROOT->LoadMacro("G4Setup_EICDetector.C");
-  G4Init(do_svtx,do_preshower,do_cemc,do_hcalin,do_magnet,do_hcalout,do_pipe,do_FGEM,do_EGEM,do_FEMC,do_FHCAL,do_EEMC,do_DIRC,do_RICH,do_Aerogel);
-
-  int absorberactive = 0; // set to 1 to make all absorbers active volumes
-  //  const string magfield = "1.5"; // if like float -> solenoidal field in T, if string use as fieldmap name (including path)
-  const string magfield = "/phenix/upgrades/decadal/fieldmaps/sPHENIX.2d.root"; // if like float -> solenoidal field in T, if string use as fieldmap name (including path)
-  const float magfield_rescale = 1.4/1.5; // scale the map to a 1.4 T field
+  G4Init();
 
   //---------------
-  // Fun4All server
+  // Magnet Settings
   //---------------
 
-  Fun4AllServer *se = Fun4AllServer::instance();
-  //  se->Verbosity(0); // uncomment for batch production running with minimal output messages
-  se->Verbosity(Fun4AllServer::VERBOSITY_SOME); // uncomment for some info for interactive running
-  // just if we set some flags somewhere in this macro
-  recoConsts *rc = recoConsts::instance();
-  // By default every random number generator uses
-  // PHRandomSeed() which reads /dev/urandom to get its seed
-  // if the RANDOMSEED flag is set its value is taken as seed
-  // You can either set this to a random value using PHRandomSeed()
-  // which will make all seeds identical (not sure what the point of
-  // this would be:
-  //  rc->set_IntFlag("RANDOMSEED",PHRandomSeed());
-  // or set it to a fixed value so you can debug your code
-  // rc->set_IntFlag("RANDOMSEED", 12345);
+  //  const string magfield = "1.5"; // alternatively to specify a constant magnetic field, give a float number, which will be translated to solenoidal field in T, if string use as fieldmap name (including path)
+  //  G4MAGNET::magfield = string(getenv("CALIBRATIONROOT")) + string("/Field/Map/sPHENIX.2d.root");  // default map from the calibration database
+  G4MAGNET::magfield_rescale = -1.4 / 1.5;  // make consistent with expected Babar field strength of 1.4T
+
+  //---------------
+  // Pythia Decayer
+  //---------------
+  // list of decay types in
+  // $OFFLINE_MAIN/include/g4decayer/EDecayType.hh
+  // default is All:
+  // G4P6DECAYER::decayType = EDecayType::kAll;
 
   //-----------------
   // Event generation
   //-----------------
 
-  if (readhits)
-    {
-      // Get the hits from a file
-      // The input manager is declared later
-    }
-  else if (readhepmc)
-    {
-      // this module is needed to read the HepMC records into our G4 sims
-      // but only if you read HepMC input files
-      HepMCNodeReader *hr = new HepMCNodeReader();
-      se->registerSubsystem(hr);
-    }
-  else if (runpythia8)
-    {
-      gSystem->Load("libPHPythia8.so");
+  // If "readhepMC" is also set, the Upsilons will be embedded in Hijing events, if 'particles" is set, the Upsilons will be embedded in whatever particles are thrown
+  if (!Input::READHITS)
+  {
+    //---------------------
+    // Detector description
+    //---------------------
 
-      PHPythia8* pythia8 = new PHPythia8();
-      // see coresoftware/generators/PHPythia8 for example config
-      pythia8->set_config_file("phpythia8.cfg");
-      se->registerSubsystem(pythia8);
-
-      HepMCNodeReader *hr = new HepMCNodeReader();
-      se->registerSubsystem(hr);
-    }
-  else if (runpythia6)
-    {
-      gSystem->Load("libPHPythia6.so");
-
-      PHPythia6 *pythia6 = new PHPythia6();
-      pythia6->set_config_file("phpythia6.cfg");
-      se->registerSubsystem(pythia6);
-
-      HepMCNodeReader *hr = new HepMCNodeReader();
-      se->registerSubsystem(hr);
-    }
-  else
-    {
-      // toss low multiplicity dummy events
-      PHG4SimpleEventGenerator *gen = new PHG4SimpleEventGenerator();
-      //gen->add_particles("e-",5); // mu+,e+,proton,pi+,Upsilon
-      //gen->add_particles("e+",5); // mu-,e-,anti_proton,pi-
-      gen->add_particles("pi-",1); // mu-,e-,anti_proton,pi-
-      if (readhepmc) {
-        gen->set_reuse_existing_vertex(true);
-        gen->set_existing_vertex_offset_vector(0.0,0.0,0.0);
-      } else {
-        gen->set_vertex_distribution_function(PHG4SimpleEventGenerator::Uniform,
-                                              PHG4SimpleEventGenerator::Uniform,
-                                              PHG4SimpleEventGenerator::Uniform);
-        gen->set_vertex_distribution_mean(0.0,0.0,0.0);
-        gen->set_vertex_distribution_width(0.0,0.0,5.0);
-      }
-      gen->set_vertex_size_function(PHG4SimpleEventGenerator::Uniform);
-      gen->set_vertex_size_parameters(0.0,0.0);
-      gen->set_eta_range(1.4, 3.0);
-      //gen->set_eta_range(3.0, 3.0); //EICDetector FWD
-      gen->set_phi_range(-1.0*TMath::Pi(), 1.0*TMath::Pi());
-      //gen->set_phi_range(TMath::Pi()/2-0.1, TMath::Pi()/2-0.1);
-      gen->set_p_range(30.0, 30.0);
-      gen->Embed(1);
-      gen->Verbosity(0);
-      se->registerSubsystem(gen);
-    }
-
-  if (!readhits)
-    {
-      //---------------------
-      // Detector description
-      //---------------------
-
-      G4Setup(absorberactive, magfield, TPythia6Decayer::kAll,do_svtx,do_preshower,do_cemc,do_hcalin,do_magnet,do_hcalout,do_pipe,do_FGEM,do_EGEM,do_FEMC,do_FHCAL,do_EEMC,do_DIRC,do_RICH,do_Aerogel,magfield_rescale);
-
-    }
+    G4Setup();
+  }
 
   //---------
   // BBC Reco
   //---------
 
-  if (do_bbc)
-    {
-      gROOT->LoadMacro("G4_Bbc.C");
-      BbcInit();
-      Bbc_Reco();
-    }
+  if (Enable::BBC)
+  {
+    BbcInit();
+    Bbc_Reco();
+  }
 
   //------------------
   // Detector Division
   //------------------
 
-  if (do_svtx_cell) Svtx_Cells();
+  if (Enable::CEMC_CELL) CEMC_Cells();
 
-  if (do_cemc_cell) CEMC_Cells();
+  if (Enable::HCALIN_CELL) HCALInner_Cells();
 
-  if (do_hcalin_cell) HCALInner_Cells();
+  if (Enable::HCALOUT_CELL) HCALOuter_Cells();
 
-  if (do_hcalout_cell) HCALOuter_Cells();
+  if (Enable::FEMC_CELL) FEMC_Cells();
 
-  if (do_FEMC_cell) FEMC_Cells();
-  if (do_FHCAL_cell) FHCAL_Cells();
+  if (Enable::FHCAL_CELL) FHCAL_Cells();
 
-  if (do_EEMC_cell) EEMC_Cells();
+  if (Enable::EEMC_CELL) EEMC_Cells();
 
   //-----------------------------
   // CEMC towering and clustering
   //-----------------------------
 
-  if (do_cemc_twr) CEMC_Towers();
-  if (do_cemc_cluster) CEMC_Clusters();
+  if (Enable::CEMC_TOWER) CEMC_Towers();
+  if (Enable::CEMC_CLUSTER) CEMC_Clusters();
 
   //-----------------------------
   // HCAL towering and clustering
   //-----------------------------
 
-  if (do_hcalin_twr) HCALInner_Towers();
-  if (do_hcalin_cluster) HCALInner_Clusters();
+  if (Enable::HCALIN_TOWER) HCALInner_Towers();
+  if (Enable::HCALIN_CLUSTER) HCALInner_Clusters();
 
-  if (do_hcalout_twr) HCALOuter_Towers();
-  if (do_hcalout_cluster) HCALOuter_Clusters();
+  if (Enable::HCALOUT_TOWER) HCALOuter_Towers();
+  if (Enable::HCALOUT_CLUSTER) HCALOuter_Clusters();
 
   //-----------------------------
   // e, h direction Calorimeter  towering and clustering
   //-----------------------------
 
-  if (do_FEMC_twr) FEMC_Towers();
-  if (do_FEMC_cluster) FEMC_Clusters();
+  if (Enable::FEMC_TOWER) FEMC_Towers();
+  if (Enable::FEMC_CLUSTER) FEMC_Clusters();
 
-  if (do_FHCAL_twr) FHCAL_Towers();
-  if (do_FHCAL_cluster) FHCAL_Clusters();
+  if (Enable::FHCAL_TOWER) FHCAL_Towers();
+  if (Enable::FHCAL_CLUSTER) FHCAL_Clusters();
 
-  if (do_EEMC_twr) EEMC_Towers();
-  if (do_EEMC_cluster) EEMC_Clusters();
+  if (Enable::EEMC_TOWER) EEMC_Towers();
+  if (Enable::EEMC_CLUSTER) EEMC_Clusters();
 
-  if (do_dst_compress) ShowerCompress();
+  if (Enable::DSTOUT_COMPRESS) ShowerCompress();
 
   //--------------
   // SVTX tracking
   //--------------
 
-  if (do_svtx_track) Svtx_Reco();
+  if (Enable::TRACKING) Tracking_Reco();
 
   //-----------------
   // Global Vertexing
   //-----------------
 
-  if (do_global)
-    {
-      gROOT->LoadMacro("G4_Global.C");
-      Global_Reco();
-    }
+  if (Enable::GLOBAL_RECO)
+  {
+    Global_Reco();
+  }
+  else if (Enable::GLOBAL_FASTSIM)
+  {
+    Global_FastSim();
+  }
 
-  else if (do_global_fastsim)
-    {
-      gROOT->LoadMacro("G4_Global.C");
-      Global_FastSim();
-    }
+  //-----------------
+  // Calo Trigger Simulation
+  //-----------------
+
+  if (Enable::CALOTRIGGER) CaloTrigger_Sim();
 
   //---------
   // Jet reco
   //---------
 
-  if (do_jet_reco)
-    {
-      gROOT->LoadMacro("G4_Jets.C");
-      Jet_Reco();
-    }
+  if (Enable::JETS) Jet_Reco();
 
-  if (do_fwd_jet_reco)
-    {
-      gROOT->LoadMacro("G4_FwdJets.C");
-      Jet_FwdReco();
-    }
+  if (Enable::HIJETS) HIJetReco();
+
+  if (Enable::FWDJETS) Jet_FwdReco();
+
+  string outputroot = outputFile;
+  string remove_this = ".root";
+  size_t pos = outputroot.find(remove_this);
+  if (pos != string::npos)
+  {
+    outputroot.erase(pos, remove_this.length());
+  }
+
+  if (Enable::DSTREADER) G4DSTreader_EICDetector(outputroot + "_DSTReader.root");
+
   //----------------------
   // Simulation evaluation
   //----------------------
+  if (Enable::TRACKING_EVAL) Tracking_Eval(outputroot + "_g4tracking_eval.root");
 
-  if (do_svtx_eval) Svtx_Eval("g4svtx_eval.root");
+  if (Enable::CEMC_EVAL) CEMC_Eval(outputroot + "_g4cemc_eval.root");
 
-  if (do_cemc_eval) CEMC_Eval("g4cemc_eval.root");
+  if (Enable::HCALIN_EVAL) HCALInner_Eval(outputroot + "_g4hcalin_eval.root");
 
-  if (do_hcalin_eval) HCALInner_Eval("g4hcalin_eval.root");
+  if (Enable::HCALOUT_EVAL) HCALOuter_Eval(outputroot + "_g4hcalout_eval.root");
 
-  if (do_hcalout_eval) HCALOuter_Eval("g4hcalout_eval.root");
+  if (Enable::FEMC_EVAL) FEMC_Eval(outputroot + "_g4femc_eval.root");
 
-  if (do_jet_eval) Jet_Eval("g4jet_eval.root");
+  if (Enable::FHCAL_EVAL) FHCAL_Eval(outputroot + "_g4fhcal_eval.root");
 
-  if (do_fwd_jet_eval) Jet_FwdEval("g4fwdjet_eval.root");
+  if (Enable::EEMC_EVAL) EEMC_Eval(outputroot + "_g4eemc_eval.root");
+
+  if (Enable::JETS_EVAL) Jet_Eval(outputroot + "_g4jet_eval.root");
+
+  if (Enable::FWDJETS_EVAL) Jet_FwdEval(outputroot + "_g4fwdjet_eval.root");
 
   //--------------
-  // IO management
+  // Set up Input Managers
   //--------------
 
-  if (readhits)
-    {
-      // Hits file
-      Fun4AllInputManager *hitsin = new Fun4AllDstInputManager("DSTin");
-      hitsin->fileopen(inputFile);
-      se->registerInputManager(hitsin);
-    }
-  if (readhepmc)
-    {
-      Fun4AllInputManager *in = new Fun4AllHepMCInputManager( "DSTIN");
-      se->registerInputManager( in );
-      se->fileopen( in->Name().c_str(), inputFile );
-    }
-  else
-    {
-      // for single particle generators we just need something which drives
-      // the event loop, the Dummy Input Mgr does just that
-      Fun4AllInputManager *in = new Fun4AllDummyInputManager( "JADE");
-      se->registerInputManager( in );
-    }
+  InputManagers();
 
-  if (do_DSTReader)
-    {
-      //Convert DST to human command readable TTree for quick poke around the outputs
-      gROOT->LoadMacro("G4_DSTReader_EICDetector.C");
+  //--------------
+  // Set up Output Manager
+  //--------------
+  if (Enable::DSTOUT)
+  {
+    Fun4AllDstOutputManager *out = new Fun4AllDstOutputManager("DSTOUT", outputFile);
+    if (Enable::DSTOUT_COMPRESS) DstCompress(out);
+    se->registerOutputManager(out);
+  }
 
-      G4DSTreader_EICDetector( outputFile, //
-                               /*int*/ absorberactive ,
-                               /*bool*/ do_svtx ,
-                               /*bool*/ do_preshower ,
-                               /*bool*/ do_cemc ,
-                               /*bool*/ do_hcalin ,
-                               /*bool*/ do_magnet ,
-                               /*bool*/ do_hcalout ,
-                               /*bool*/ do_cemc_twr ,
-                               /*bool*/ do_hcalin_twr ,
-                               /*bool*/ do_magnet  ,
-                               /*bool*/ do_hcalout_twr,
-                               /*bool*/ do_FGEM,
-                               /*bool*/ do_EGEM,
-                               /*bool*/ do_FHCAL,
-                               /*bool*/ do_FHCAL_twr,
-                               /*bool*/ do_FEMC,
-                               /*bool*/ do_FEMC_twr,
-			       /*bool*/ do_EEMC,
-			       /*bool*/ do_EEMC_twr
-                               );
-    }
-
-  //Fun4AllDstOutputManager *out = new Fun4AllDstOutputManager("DSTOUT", outputFile);
-  //if (do_dst_compress) DstCompress(out);
-  //se->registerOutputManager(out);
-
-  if (nEvents == 0 && !readhits && !readhepmc)
-    {
-      cout << "using 0 for number of events is a bad idea when using particle generators" << endl;
-      cout << "it will run forever, so I just return without running anything" << endl;
-      return;
-    }
-
+  //-----------------
+  // Event processing
+  //-----------------
   if (nEvents < 0)
-    {
-      PHG4Reco *g4 = (PHG4Reco *) se->getSubsysReco("PHG4RECO");
-      g4->ApplyCommand("/control/execute vis.mac");
-      //g4->StartGui();
-      se->run(1);
+  {
+    return 0;
+  }
+  // if we run any of the particle generators and use 0 it'll run forever
+  if (nEvents == 0 && !Input::READHITS && !Input::HEPMC && !Input::READEIC)
+  {
+    cout << "using 0 for number of events is a bad idea when using particle generators" << endl;
+    cout << "it will run forever, so I just return without running anything" << endl;
+    return 0;
+  }
 
-      se->End();
-      std::cout << "All done" << std::endl;
+  se->run(nEvents);
 
+  //-----
+  // Exit
+  //-----
 
-      std::cout << "==== Useful display commands ==" << std::endl;
-      cout << "draw axis: " << endl;
-      cout << " G4Cmd(\"/vis/scene/add/axes 0 0 0 50 cm\")" << endl;
-      cout << "zoom" << endl;
-      cout << " G4Cmd(\"/vis/viewer/zoom 1\")" << endl;
-      cout << "viewpoint:" << endl;
-      cout << " G4Cmd(\"/vis/viewer/set/viewpointThetaPhi 0 0\")" << endl;
-      cout << "panTo:" << endl;
-      cout << " G4Cmd(\"/vis/viewer/panTo 0 0 cm\")" << endl;
-      cout << "print to eps:" << endl;
-      cout << " G4Cmd(\"/vis/ogl/printEPS\")" << endl;
-      cout << "set background color:" << endl;
-      cout << " G4Cmd(\"/vis/viewer/set/background white\")" << endl;
-      std::cout << "===============================" << std::endl;
-    }
-  else
-    {
-
-      se->run(nEvents);
-
-      se->End();
-      std::cout << "All done" << std::endl;
-      delete se;
-      gSystem->Exit(0);
-    }
-
-}
-
-
-void
-G4Cmd(const char * cmd)
-{
-  Fun4AllServer *se = Fun4AllServer::instance();
-  PHG4Reco *g4 = (PHG4Reco *) se->getSubsysReco("PHG4RECO");
-  g4->ApplyCommand(cmd);
+  se->End();
+  std::cout << "All done" << std::endl;
+  delete se;
+  gSystem->Exit(0);
+  return 0;
 }

@@ -1,12 +1,38 @@
+#pragma once
 
-void Jet_Reco(int verbosity = 0) {
+#include "GlobalVariables.C"
 
-  gSystem->Load("libg4jets.so");
-  
+#include <g4jets/ClusterJetInput.h>
+#include <g4jets/FastJetAlgo.h>
+#include <g4jets/JetReco.h>
+#include <g4jets/TowerJetInput.h>
+#include <g4jets/TrackJetInput.h>
+#include <g4jets/TruthJetInput.h>
+
+#include <g4eval/JetEvaluator.h>
+
+#include <fun4all/Fun4AllServer.h>
+
+R__LOAD_LIBRARY(libg4jets.so)
+R__LOAD_LIBRARY(libg4eval.so)
+
+namespace Enable
+{
+  bool JETS = false;
+  bool JETS_EVAL = false;
+  int JETS_VERBOSITY = 0;
+}
+
+void JetInit() {}
+
+void Jet_Reco() {
+
+int verbosity = std::max(Enable::VERBOSITY, Enable::JETS_VERBOSITY);
+
   Fun4AllServer *se = Fun4AllServer::instance();
 
   // truth particle level jets
-  JetReco *truthjetreco = new JetReco();
+  JetReco *truthjetreco = new JetReco("TRUTHJETRECO");
   truthjetreco->add_input(new TruthJetInput(Jet::PARTICLE));
   truthjetreco->add_algo(new FastJetAlgo(Jet::ANTIKT,0.2),"AntiKt_Truth_r02");
   truthjetreco->add_algo(new FastJetAlgo(Jet::ANTIKT,0.3),"AntiKt_Truth_r03");
@@ -21,7 +47,7 @@ void Jet_Reco(int verbosity = 0) {
   se->registerSubsystem(truthjetreco);
 
   // tower jets
-  JetReco *towerjetreco = new JetReco();
+  JetReco *towerjetreco = new JetReco("TOWERJETRECO");
   towerjetreco->add_input(new TowerJetInput(Jet::CEMC_TOWER));
   towerjetreco->add_input(new TowerJetInput(Jet::HCALIN_TOWER));
   towerjetreco->add_input(new TowerJetInput(Jet::HCALOUT_TOWER));
@@ -38,7 +64,7 @@ void Jet_Reco(int verbosity = 0) {
   se->registerSubsystem(towerjetreco);
 
   // cluster jets
-  JetReco *clusterjetreco = new JetReco();
+  JetReco *clusterjetreco = new JetReco("CLUSTERJETRECO");
   clusterjetreco->add_input(new ClusterJetInput(Jet::CEMC_CLUSTER));
   clusterjetreco->add_input(new ClusterJetInput(Jet::HCALIN_CLUSTER));
   clusterjetreco->add_input(new ClusterJetInput(Jet::HCALOUT_CLUSTER));
@@ -55,8 +81,8 @@ void Jet_Reco(int verbosity = 0) {
   se->registerSubsystem(clusterjetreco);
   
   // track jets
-  JetReco *trackjetreco = new JetReco();
-  trackjetreco->add_input(new TrackJetInput(Jet::TRACK));
+  JetReco *trackjetreco = new JetReco("TRACKJETRECO");
+  trackjetreco->add_input(new TrackJetInput(Jet::TRACK,TRACKING::TrackNodeName));
   trackjetreco->add_algo(new FastJetAlgo(Jet::ANTIKT,0.2),"AntiKt_Track_r02");
   trackjetreco->add_algo(new FastJetAlgo(Jet::ANTIKT,0.3),"AntiKt_Track_r03");
   trackjetreco->add_algo(new FastJetAlgo(Jet::ANTIKT,0.4),"AntiKt_Track_r04");
@@ -72,11 +98,10 @@ void Jet_Reco(int verbosity = 0) {
   return; 
 }
 
-void Jet_Eval(std::string outfilename = "g4jets_eval.root",
-	      int verbosity = 0) {
+void Jet_Eval(const std::string &outfilename = "g4jets_eval.root")
+{
+int verbosity = std::max(Enable::VERBOSITY, Enable::JETS_VERBOSITY);
 
-  gSystem->Load("libg4eval.so");
-  
   Fun4AllServer *se = Fun4AllServer::instance();
 
   JetEvaluator* eval = new JetEvaluator("JETEVALUATOR",

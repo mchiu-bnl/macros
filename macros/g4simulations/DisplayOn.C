@@ -1,3 +1,30 @@
+#pragma once
+
+#include <g4main/PHG4Reco.h>
+
+#include <fun4all/Fun4AllServer.h>
+
+R__LOAD_LIBRARY(libfun4all.so)
+R__LOAD_LIBRARY(libg4testbench.so)
+
+namespace Enable
+{
+  bool DISPLAY = false;
+}
+
+// This starts the QT based G4 gui which takes control
+// when x'ed out it will return a pointer to PHG4Reco so
+// the gui can be startrd again
+PHG4Reco *QTGui()
+{
+  Fun4AllServer *se = Fun4AllServer::instance();
+  PHG4Reco *g4 = (PHG4Reco *) se->getSubsysReco("PHG4RECO");
+  g4->InitRun(se->topNode());
+  g4->ApplyDisplayAction();
+  g4->StartGui();
+  return g4;
+}
+
 // stupid macro to turn on the geant4 display
 // we ask Fun4All for a pointer to PHG4Reco
 // using the ApplyCommand will start up the
@@ -12,6 +39,7 @@ PHG4Reco * DisplayOn(const char *mac = "vis.mac")
   Fun4AllServer *se = Fun4AllServer::instance();
   PHG4Reco *g4 = (PHG4Reco *) se->getSubsysReco("PHG4RECO");
   g4->InitRun(se->topNode());
+  g4->ApplyDisplayAction();
   sprintf(cmd, "/control/execute %s", mac);
   g4->ApplyCommand(cmd);
   return g4;
